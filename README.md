@@ -100,24 +100,12 @@ Run anthill on your own machine or server. The daemon polls Jira every 30 second
 
 ### Install
 
-**Linux / macOS (curl):**
+**Linux / macOS:**
 ```bash
-# Linux amd64
-curl -sSL https://github.com/yoennisrg/anthill/releases/latest/download/anthill-linux-amd64 \
-  -o /usr/local/bin/anthill && chmod +x /usr/local/bin/anthill
-
-# Linux arm64
-curl -sSL https://github.com/yoennisrg/anthill/releases/latest/download/anthill-linux-arm64 \
-  -o /usr/local/bin/anthill && chmod +x /usr/local/bin/anthill
-
-# macOS arm64 (Apple Silicon)
-curl -sSL https://github.com/yoennisrg/anthill/releases/latest/download/anthill-darwin-arm64 \
-  -o /usr/local/bin/anthill && chmod +x /usr/local/bin/anthill
-
-# macOS amd64
-curl -sSL https://github.com/yoennisrg/anthill/releases/latest/download/anthill-darwin-amd64 \
-  -o /usr/local/bin/anthill && chmod +x /usr/local/bin/anthill
+curl -sSL https://raw.githubusercontent.com/yoennisrg/anthill-action/main/install.sh | bash
 ```
+
+Detects your OS and architecture automatically. Installs to `/usr/local/bin/anthill`.
 
 ### Configure and start
 
@@ -152,16 +140,26 @@ anthill daemon containers             List running ant containers
 anthill daemon exec <container>       Open a shell inside a container
 anthill status                        Show daemon status, integrations, running containers, open PRs
 anthill run <ticket-id>               Manually trigger a single ticket
-anthill jira get <ticket-id>          Fetch and print full ticket details
-anthill jira update <ticket-id>       Update a ticket (--transition, --comment, --label, --attach)
+anthill issues get <id>               Fetch and print full ticket details (uses configured provider)
+anthill issues update <id>            Update a ticket (--transition, --comment, --label)
+anthill jira get <ticket-id>          Fetch and print full Jira ticket details
+anthill jira update <ticket-id>       Update a Jira ticket (--transition, --comment, --label, --attach)
 anthill version                       Show version
 ```
 
+`anthill issues` works with whichever provider is configured — Jira or GitHub Issues. `anthill jira` is Jira-specific and supports file attachments.
+
 Examples:
 ```bash
+# Jira
 anthill run PROJ-42
-anthill jira get PROJ-42
-anthill jira update PROJ-42 --transition "In Review" --comment "Implemented in PR #88"
+anthill issues get PROJ-42
+anthill issues update PROJ-42 --transition "In Review" --comment "Done in PR #88"
+
+# GitHub Issues
+anthill run 42
+anthill issues get 42
+anthill issues update 42 --label "in-review" --comment "Done in PR #88"
 ```
 
 ---
