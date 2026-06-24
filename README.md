@@ -18,7 +18,7 @@ anthill poller detects it (every 30s)
 ticket moved to "In Progress"
         |
         v
-agent container launched (ghcr.io/yoennisrg/anthill:latest)
+agent container launched (ghcr.io/yoennisrg/anthill-action:latest)
         |
         +-- clones target repo
         +-- injects agent workspace (AGENTS.md, agents/, skills/)
@@ -91,6 +91,11 @@ You can trigger this from a Jira webhook, a GitHub Actions schedule, or any even
 | `jira_email` | no | Jira account email |
 | `jira_token` | no | Jira API token |
 | `jira_project` | no | Jira project key (e.g. `MP`) |
+| `cgc_url` | no | CGC Neo4j bolt URL (e.g. `bolt://host:7687`) |
+| `cgc_user` | no | CGC Neo4j username (defaults to `neo4j`) |
+| `cgc_password` | no | CGC Neo4j password |
+| `graphiti_url` | no | Graphiti MCP server URL (e.g. `http://host:8001/mcp/`) |
+| `graphiti_group_id` | no | Graphiti group ID for this repo (e.g. `owner/repo`) |
 
 ---
 
@@ -124,8 +129,9 @@ anthill status
 1. Check and configure `gh` CLI authentication
 2. Prompt for your GitHub token, OpenCode API key, and optional Brave Search key
 3. Validate the target repo and let you pick the branch
-4. Configure Jira (optional) and set up the ticket state reactions
-5. Write `~/.anthill/anthill.yaml` and `~/.anthill/secrets.yaml`
+4. Configure ticket provider — Jira or GitHub Issues (optional)
+5. Configure Knowledge Layer — CGC and Graphiti (optional)
+6. Write `~/.anthill/anthill.yaml` and `~/.anthill/secrets.yaml`
 
 ---
 
@@ -208,6 +214,16 @@ integrations:
   #     - listener: Ready for Dev
   #       on_start: In Progress
   #       on_complete: In Review
+
+# Knowledge Layer — CGC structural graph + Graphiti semantic graph (optional)
+# When configured, agent containers automatically index the repo and query
+# the knowledge graph before implementing.
+knowledge:
+  cgc_url: bolt://192.168.1.100:7687      # Neo4j for CGC
+  cgc_user: neo4j
+  cgc_password: <password>
+  graphiti_url: http://192.168.1.100:8001/mcp/  # Graphiti MCP server
+  graphiti_group_id: owner/repo           # group_id for this repo in Graphiti
 ```
 
 ### `~/.anthill/secrets.yaml`
