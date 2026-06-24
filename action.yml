@@ -181,6 +181,7 @@ runs:
           )
         fi
 
+        docker pull ghcr.io/yoennisrg/anthill-action:latest
         docker run --rm "${ENV_ARGS[@]}" ghcr.io/yoennisrg/anthill-action:latest
 
     - name: Merge PR
