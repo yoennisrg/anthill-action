@@ -3,7 +3,7 @@ description: Run an anthill agent container for a given ticket
 
 inputs:
   ticket_id:
-    description: Ticket ID to work on (e.g. PROJ-123)
+    description: Ticket ID to work on (e.g. PROJ-123 or 42)
     required: true
   task:
     description: Additional task context or instructions
@@ -19,11 +19,15 @@ inputs:
     description: Target branch
     required: false
     default: main
+  merge:
+    description: Merge policy — auto merges the PR on success, manual leaves it for review
+    required: false
+    default: manual
   github_token:
-    description: GitHub token for git operations
+    description: GitHub token for git operations and PR creation
     required: true
   merge_token:
-    description: GitHub token with merge permissions
+    description: GitHub token with merge permissions (falls back to github_token)
     required: false
   opencode_api_key:
     description: API key for OpenCode
@@ -57,7 +61,7 @@ inputs:
     description: Graphiti MCP server URL (e.g. http://host:8001/mcp/)
     required: false
   graphiti_group_id:
-    description: Graphiti group ID for this repo (e.g. sell)
+    description: Graphiti group ID for this repo (e.g. owner/repo)
     required: false
 
 runs:
@@ -76,19 +80,7 @@ runs:
       run: |
         mkdir -p ~/.anthill
 
-        # Build knowledge block only if CGC or Graphiti is configured
-        KNOWLEDGE_BLOCK=""
-        if [ -n "${{ inputs.cgc_url }}" ] || [ -n "${{ inputs.graphiti_url }}" ]; then
-          KNOWLEDGE_BLOCK="knowledge:
-          cgc_url: \"${{ inputs.cgc_url }}\"
-          cgc_user: \"${{ inputs.cgc_user }}\"
-          cgc_password: \"${{ inputs.cgc_password }}\"
-          graphiti_url: \"${{ inputs.graphiti_url }}\"
-          graphiti_group_id: \"${{ inputs.graphiti_group_id }}\""
-        fi
-
         # Determine active integration
-        INTEGRATION_BLOCK=""
         if [ -n "${{ inputs.jira_url }}" ]; then
           INTEGRATION_BLOCK="  jira:
             url: \"${{ inputs.jira_url }}\"
@@ -99,6 +91,17 @@ runs:
           INTEGRATION_BLOCK="  github:
             token: \"${{ inputs.github_token }}\"
             repo: \"${{ inputs.repository }}\""
+        fi
+
+        # Build knowledge block only if CGC or Graphiti is configured
+        KNOWLEDGE_BLOCK=""
+        if [ -n "${{ inputs.cgc_url }}" ] || [ -n "${{ inputs.graphiti_url }}" ]; then
+          KNOWLEDGE_BLOCK="knowledge:
+          cgc_url: \"${{ inputs.cgc_url }}\"
+          cgc_user: \"${{ inputs.cgc_user }}\"
+          cgc_password: \"${{ inputs.cgc_password }}\"
+          graphiti_url: \"${{ inputs.graphiti_url }}\"
+          graphiti_group_id: \"${{ inputs.graphiti_group_id }}\""
         fi
 
         cat > ~/.anthill/anthill.yaml <<EOF
@@ -120,6 +123,24 @@ runs:
         registry_token: "${{ inputs.github_token }}"
         EOF
 
+    - name: Fetch ticket context
+      shell: bash
+      run: |
+        TASK=$(anthill issues get ${{ inputs.ticket_id }} 2>/dev/null || true)
+        if [ -n "${{ inputs.task }}" ]; then
+          TASK="${TASK}"$'\n\n'"${{ inputs.task }}"
+        fi
+        # Fallback if provider fetch failed
+        if [ -z "$TASK" ]; then
+          TASK="Work on ticket ${{ inputs.ticket_id }}"
+        fi
+        # Export for next steps via GITHUB_ENV
+        EOF_MARKER=$(openssl rand -hex 8)
+        echo "ANTHILL_TASK<<${EOF_MARKER}" >> $GITHUB_ENV
+        echo "${TASK}" >> $GITHUB_ENV
+        echo "${EOF_MARKER}" >> $GITHUB_ENV
+        echo "📋 Task context fetched (${#TASK} bytes)"
+
     - name: Login to GHCR
       uses: docker/login-action@v3
       with:
@@ -127,6 +148,56 @@ runs:
         username: ${{ github.actor }}
         password: ${{ inputs.github_token || github.token }}
 
-    - name: Run ticket
+    - name: Run agent
       shell: bash
-      run: anthill run ${{ inputs.ticket_id }}
+      run: |
+        # Build env args
+        ENV_ARGS=(
+          -e "ANTHILL_TICKET=${{ inputs.ticket_id }}"
+          -e "ANTHILL_TASK=${ANTHILL_TASK}"
+          -e "ANTHILL_REPOSITORY=${{ inputs.repository }}"
+          -e "ANTHILL_BRANCH=${{ inputs.branch }}"
+          -e "ANTHILL_MODEL=${{ inputs.model }}"
+          -e "GH_TOKEN=${{ inputs.github_token }}"
+          -e "ANTHILL_GITHUB_TOKEN=${{ inputs.github_token }}"
+          -e "ANTHILL_MERGE_TOKEN=${{ inputs.merge_token }}"
+          -e "ANTHILL_OPENCODE_API_KEY=${{ inputs.opencode_api_key }}"
+          -e "OPENCODE_API_KEY=${{ inputs.opencode_api_key }}"
+          -e "BRAVE_API_KEY=${{ inputs.brave_api_key }}"
+        )
+
+        # Knowledge Layer (optional)
+        if [ -n "${{ inputs.cgc_url }}" ]; then
+          ENV_ARGS+=(
+            -e "ANTHILL_CGC_URL=${{ inputs.cgc_url }}"
+            -e "ANTHILL_CGC_USER=${{ inputs.cgc_user }}"
+            -e "ANTHILL_CGC_PASSWORD=${{ inputs.cgc_password }}"
+          )
+        fi
+        if [ -n "${{ inputs.graphiti_url }}" ]; then
+          ENV_ARGS+=(
+            -e "ANTHILL_GRAPHITI_URL=${{ inputs.graphiti_url }}"
+            -e "ANTHILL_GRAPHITI_GROUP_ID=${{ inputs.graphiti_group_id }}"
+          )
+        fi
+
+        docker run --rm "${ENV_ARGS[@]}" ghcr.io/yoennisrg/anthill-action:latest
+
+    - name: Merge PR
+      if: ${{ inputs.merge == 'auto' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.merge_token || inputs.github_token }}
+      run: |
+        PR=$(gh pr list \
+          --repo ${{ inputs.repository }} \
+          --search "${{ inputs.ticket_id }}" \
+          --state open \
+          --json number \
+          --jq '.[0].number')
+        if [ -n "$PR" ] && [ "$PR" != "null" ]; then
+          echo "🔀 Merging PR #${PR}"
+          gh pr merge "$PR" --repo ${{ inputs.repository }} --squash
+        else
+          echo "ℹ️ No open PR found for ticket ${{ inputs.ticket_id }}"
+        fi
