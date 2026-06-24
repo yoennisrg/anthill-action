@@ -87,6 +87,20 @@ runs:
           graphiti_group_id: \"${{ inputs.graphiti_group_id }}\""
         fi
 
+        # Determine active integration
+        INTEGRATION_BLOCK=""
+        if [ -n "${{ inputs.jira_url }}" ]; then
+          INTEGRATION_BLOCK="  jira:
+            url: \"${{ inputs.jira_url }}\"
+            email: \"${{ inputs.jira_email }}\"
+            token: \"${{ inputs.jira_token }}\"
+            project: \"${{ inputs.jira_project }}\""
+        else
+          INTEGRATION_BLOCK="  github:
+            token: \"${{ inputs.github_token }}\"
+            repo: \"${{ inputs.repository }}\""
+        fi
+
         cat > ~/.anthill/anthill.yaml <<EOF
         version: 1
         repos:
@@ -94,11 +108,7 @@ runs:
             branch: ${{ inputs.branch }}
         daemon: {}
         integrations:
-          jira:
-            url: "${{ inputs.jira_url }}"
-            email: "${{ inputs.jira_email }}"
-            token: "${{ inputs.jira_token }}"
-            project: "${{ inputs.jira_project }}"
+        ${INTEGRATION_BLOCK}
         ${KNOWLEDGE_BLOCK}
         EOF
 
@@ -115,7 +125,7 @@ runs:
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
-        password: ${{ inputs.github_token }}
+        password: ${{ inputs.github_token || github.token }}
 
     - name: Run ticket
       shell: bash
