@@ -1,0 +1,93 @@
+name: Anthill
+description: Run an anthill agent container for a given ticket
+
+inputs:
+  ticket_id:
+    description: Ticket ID to work on (e.g. PROJ-123)
+    required: true
+  task:
+    description: Additional task context or instructions
+    required: false
+  model:
+    description: AI model override
+    required: false
+  repository:
+    description: Target repository (owner/repo). Defaults to current repo.
+    required: false
+    default: ${{ github.repository }}
+  branch:
+    description: Target branch
+    required: false
+    default: main
+  github_token:
+    description: GitHub token for git operations
+    required: true
+  merge_token:
+    description: GitHub token with merge permissions
+    required: false
+  opencode_api_key:
+    description: API key for OpenCode
+    required: true
+  brave_api_key:
+    description: Brave Search API key
+    required: false
+  jira_url:
+    description: Jira base URL (e.g. https://myco.atlassian.net)
+    required: false
+  jira_email:
+    description: Jira account email
+    required: false
+  jira_token:
+    description: Jira API token
+    required: false
+  jira_project:
+    description: Jira project key (e.g. MP)
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Install anthill CLI
+      shell: bash
+      run: |
+        curl -sSL \
+          https://github.com/yoennisrg/anthill-action/releases/latest/download/anthill-linux-amd64 \
+          -o /usr/local/bin/anthill
+        chmod +x /usr/local/bin/anthill
+
+    - name: Write anthill config
+      shell: bash
+      run: |
+        mkdir -p ~/.anthill
+        cat > ~/.anthill/anthill.yaml <<EOF
+        version: 1
+        repos:
+          - repo: ${{ inputs.repository }}
+            branch: ${{ inputs.branch }}
+        daemon: {}
+        integrations:
+          jira:
+            url: "${{ inputs.jira_url }}"
+            email: "${{ inputs.jira_email }}"
+            token: "${{ inputs.jira_token }}"
+            project: "${{ inputs.jira_project }}"
+        EOF
+
+        cat > ~/.anthill/secrets.yaml <<EOF
+        github_token: "${{ inputs.github_token }}"
+        merge_token: "${{ inputs.merge_token }}"
+        opencode_api_key: "${{ inputs.opencode_api_key }}"
+        brave_api_key: "${{ inputs.brave_api_key }}"
+        registry_token: "${{ inputs.github_token }}"
+        EOF
+
+    - name: Login to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: Run ticket
+      shell: bash
+      run: anthill run ${{ inputs.ticket_id }}
