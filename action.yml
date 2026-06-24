@@ -43,6 +43,22 @@ inputs:
   jira_project:
     description: Jira project key (e.g. MP)
     required: false
+  cgc_url:
+    description: CGC Neo4j bolt URL (e.g. bolt://host:7687)
+    required: false
+  cgc_user:
+    description: CGC Neo4j username
+    required: false
+    default: neo4j
+  cgc_password:
+    description: CGC Neo4j password
+    required: false
+  graphiti_url:
+    description: Graphiti MCP server URL (e.g. http://host:8001/mcp/)
+    required: false
+  graphiti_group_id:
+    description: Graphiti group ID for this repo (e.g. sell)
+    required: false
 
 runs:
   using: composite
@@ -59,6 +75,18 @@ runs:
       shell: bash
       run: |
         mkdir -p ~/.anthill
+
+        # Build knowledge block only if CGC or Graphiti is configured
+        KNOWLEDGE_BLOCK=""
+        if [ -n "${{ inputs.cgc_url }}" ] || [ -n "${{ inputs.graphiti_url }}" ]; then
+          KNOWLEDGE_BLOCK="knowledge:
+          cgc_url: \"${{ inputs.cgc_url }}\"
+          cgc_user: \"${{ inputs.cgc_user }}\"
+          cgc_password: \"${{ inputs.cgc_password }}\"
+          graphiti_url: \"${{ inputs.graphiti_url }}\"
+          graphiti_group_id: \"${{ inputs.graphiti_group_id }}\""
+        fi
+
         cat > ~/.anthill/anthill.yaml <<EOF
         version: 1
         repos:
@@ -71,6 +99,7 @@ runs:
             email: "${{ inputs.jira_email }}"
             token: "${{ inputs.jira_token }}"
             project: "${{ inputs.jira_project }}"
+        ${KNOWLEDGE_BLOCK}
         EOF
 
         cat > ~/.anthill/secrets.yaml <<EOF
