@@ -6,8 +6,8 @@ inputs:
     description: Ticket ID to work on (e.g. PROJ-123 or 42)
     required: true
   task:
-    description: Additional task context or instructions
-    required: false
+    description: Full ticket context (title, description, comments). Built by on-issue or on-jira actions.
+    required: true
   model:
     description: AI model override
     required: false
@@ -35,18 +35,6 @@ inputs:
   brave_api_key:
     description: Brave Search API key
     required: false
-  jira_url:
-    description: Jira base URL (e.g. https://myco.atlassian.net)
-    required: false
-  jira_email:
-    description: Jira account email
-    required: false
-  jira_token:
-    description: Jira API token
-    required: false
-  jira_project:
-    description: Jira project key (e.g. MP)
-    required: false
   cgc_url:
     description: CGC Neo4j bolt URL (e.g. bolt://host:7687)
     required: false
@@ -67,80 +55,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install anthill CLI
-      shell: bash
-      run: |
-        curl -sSL \
-          https://github.com/yoennisrg/anthill-action/releases/latest/download/anthill-linux-amd64 \
-          -o /usr/local/bin/anthill
-        chmod +x /usr/local/bin/anthill
-
-    - name: Write anthill config
-      shell: bash
-      run: |
-        mkdir -p ~/.anthill
-
-        # Determine active integration
-        if [ -n "${{ inputs.jira_url }}" ]; then
-          INTEGRATION_BLOCK="  jira:
-            url: \"${{ inputs.jira_url }}\"
-            email: \"${{ inputs.jira_email }}\"
-            token: \"${{ inputs.jira_token }}\"
-            project: \"${{ inputs.jira_project }}\""
-        else
-          INTEGRATION_BLOCK="  github:
-            token: \"${{ inputs.github_token }}\"
-            repo: \"${{ inputs.repository }}\""
-        fi
-
-        # Build knowledge block only if CGC or Graphiti is configured
-        KNOWLEDGE_BLOCK=""
-        if [ -n "${{ inputs.cgc_url }}" ] || [ -n "${{ inputs.graphiti_url }}" ]; then
-          KNOWLEDGE_BLOCK="knowledge:
-          cgc_url: \"${{ inputs.cgc_url }}\"
-          cgc_user: \"${{ inputs.cgc_user }}\"
-          cgc_password: \"${{ inputs.cgc_password }}\"
-          graphiti_url: \"${{ inputs.graphiti_url }}\"
-          graphiti_group_id: \"${{ inputs.graphiti_group_id }}\""
-        fi
-
-        cat > ~/.anthill/anthill.yaml <<EOF
-        version: 1
-        repos:
-          - repo: ${{ inputs.repository }}
-            branch: ${{ inputs.branch }}
-        daemon: {}
-        integrations:
-        ${INTEGRATION_BLOCK}
-        ${KNOWLEDGE_BLOCK}
-        EOF
-
-        cat > ~/.anthill/secrets.yaml <<EOF
-        github_token: "${{ inputs.github_token }}"
-        merge_token: "${{ inputs.merge_token }}"
-        opencode_api_key: "${{ inputs.opencode_api_key }}"
-        brave_api_key: "${{ inputs.brave_api_key }}"
-        registry_token: "${{ inputs.github_token }}"
-        EOF
-
-    - name: Fetch ticket context
-      shell: bash
-      run: |
-        TASK=$(anthill issues get ${{ inputs.ticket_id }} 2>/dev/null || true)
-        if [ -n "${{ inputs.task }}" ]; then
-          TASK="${TASK}"$'\n\n'"${{ inputs.task }}"
-        fi
-        # Fallback if provider fetch failed
-        if [ -z "$TASK" ]; then
-          TASK="Work on ticket ${{ inputs.ticket_id }}"
-        fi
-        # Export for next steps via GITHUB_ENV
-        EOF_MARKER=$(openssl rand -hex 8)
-        echo "ANTHILL_TASK<<${EOF_MARKER}" >> $GITHUB_ENV
-        echo "${TASK}" >> $GITHUB_ENV
-        echo "${EOF_MARKER}" >> $GITHUB_ENV
-        echo "📋 Task context fetched (${#TASK} bytes)"
-
     - name: Login to GHCR
       uses: docker/login-action@v3
       with:
@@ -151,10 +65,9 @@ runs:
     - name: Run agent
       shell: bash
       run: |
-        # Build env args
         ENV_ARGS=(
           -e "ANTHILL_TICKET=${{ inputs.ticket_id }}"
-          -e "ANTHILL_TASK=${ANTHILL_TASK}"
+          -e "ANTHILL_TASK=${{ inputs.task }}"
           -e "ANTHILL_REPOSITORY=${{ inputs.repository }}"
           -e "ANTHILL_BRANCH=${{ inputs.branch }}"
           -e "ANTHILL_MODEL=${{ inputs.model }}"
@@ -166,7 +79,6 @@ runs:
           -e "BRAVE_API_KEY=${{ inputs.brave_api_key }}"
         )
 
-        # Knowledge Layer (optional)
         if [ -n "${{ inputs.cgc_url }}" ]; then
           ENV_ARGS+=(
             -e "ANTHILL_CGC_URL=${{ inputs.cgc_url }}"
