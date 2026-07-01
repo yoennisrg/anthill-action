@@ -1,116 +1,48 @@
 name: Anthill
-description: Run an anthill agent container for a given ticket
+description: Poll Intent for pending AgentEvents and dispatch execution workflows
 
 inputs:
-  ticket_id:
-    description: Ticket ID to work on (e.g. PROJ-123 or 42)
+  intent_url:
+    description: Intent API base URL
     required: true
-  task:
-    description: Full ticket context (title, description, comments). Built by on-issue or on-jira actions.
+  client_id:
+    description: Pre-registered clientId for this runtime (X-Runtime-Client-Id)
     required: true
-  model:
-    description: AI model override
+  github_token:
+    description: GitHub token for dispatching workflows and git operations
+    required: true
+  opencode_api_key:
+    description: OpenCode API key for the agent
     required: false
-  repository:
-    description: Target repository (owner/repo). Defaults to current repo.
+  brave_api_key:
+    description: Brave Search API key (optional)
     required: false
-    default: ${{ github.repository }}
+  registry_token:
+    description: GitHub token for pulling from GHCR (defaults to github_token)
+    required: false
   branch:
     description: Target branch
     required: false
     default: main
   merge:
-    description: Merge policy — auto merges the PR on success, manual leaves it for review
+    description: Merge policy — auto or manual
     required: false
     default: manual
-  github_token:
-    description: GitHub token for git operations and PR creation
-    required: true
-  merge_token:
-    description: GitHub token with merge permissions (falls back to github_token)
-    required: false
-  opencode_api_key:
-    description: API key for OpenCode
-    required: true
-  brave_api_key:
-    description: Brave Search API key
-    required: false
-  cgc_url:
-    description: CGC Neo4j bolt URL (e.g. bolt://host:7687)
-    required: false
-  cgc_user:
-    description: CGC Neo4j username
-    required: false
-    default: neo4j
-  cgc_password:
-    description: CGC Neo4j password
-    required: false
-  graphiti_url:
-    description: Graphiti MCP server URL (e.g. http://host:8001/mcp/)
-    required: false
-  graphiti_group_id:
-    description: Graphiti group ID for this repo (e.g. owner/repo)
+  model:
+    description: AI model override
     required: false
 
 runs:
   using: composite
   steps:
-    - name: Login to GHCR
-      uses: docker/login-action@v3
+    - uses: yoennisrg/anthill-action/on-event@main
       with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ inputs.github_token || github.token }}
-
-    - name: Run agent
-      shell: bash
-      run: |
-        ENV_ARGS=(
-          -e "ANTHILL_TICKET=${{ inputs.ticket_id }}"
-          -e "ANTHILL_TASK=${{ inputs.task }}"
-          -e "ANTHILL_REPOSITORY=${{ inputs.repository }}"
-          -e "ANTHILL_BRANCH=${{ inputs.branch }}"
-          -e "ANTHILL_MODEL=${{ inputs.model }}"
-          -e "GH_TOKEN=${{ inputs.github_token }}"
-          -e "ANTHILL_GITHUB_TOKEN=${{ inputs.github_token }}"
-          -e "ANTHILL_MERGE_TOKEN=${{ inputs.merge_token }}"
-          -e "ANTHILL_OPENCODE_API_KEY=${{ inputs.opencode_api_key }}"
-          -e "OPENCODE_API_KEY=${{ inputs.opencode_api_key }}"
-          -e "BRAVE_API_KEY=${{ inputs.brave_api_key }}"
-        )
-
-        if [ -n "${{ inputs.cgc_url }}" ]; then
-          ENV_ARGS+=(
-            -e "ANTHILL_CGC_URL=${{ inputs.cgc_url }}"
-            -e "ANTHILL_CGC_USER=${{ inputs.cgc_user }}"
-            -e "ANTHILL_CGC_PASSWORD=${{ inputs.cgc_password }}"
-          )
-        fi
-        if [ -n "${{ inputs.graphiti_url }}" ]; then
-          ENV_ARGS+=(
-            -e "ANTHILL_GRAPHITI_URL=${{ inputs.graphiti_url }}"
-            -e "ANTHILL_GRAPHITI_GROUP_ID=${{ inputs.graphiti_group_id }}"
-          )
-        fi
-
-        docker pull ghcr.io/yoennisrg/anthill-action:latest
-        docker run --rm "${ENV_ARGS[@]}" ghcr.io/yoennisrg/anthill-action:latest
-
-    - name: Merge PR
-      if: ${{ inputs.merge == 'auto' }}
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.merge_token || inputs.github_token }}
-      run: |
-        PR=$(gh pr list \
-          --repo ${{ inputs.repository }} \
-          --search "${{ inputs.ticket_id }}" \
-          --state open \
-          --json number \
-          --jq '.[0].number')
-        if [ -n "$PR" ] && [ "$PR" != "null" ]; then
-          echo "🔀 Merging PR #${PR}"
-          gh pr merge "$PR" --repo ${{ inputs.repository }} --squash
-        else
-          echo "ℹ️ No open PR found for ticket ${{ inputs.ticket_id }}"
-        fi
+        intent_url: ${{ inputs.intent_url }}
+        client_id: ${{ inputs.client_id }}
+        github_token: ${{ inputs.github_token }}
+        opencode_api_key: ${{ inputs.opencode_api_key }}
+        brave_api_key: ${{ inputs.brave_api_key }}
+        registry_token: ${{ inputs.registry_token || inputs.github_token }}
+        branch: ${{ inputs.branch }}
+        merge: ${{ inputs.merge }}
+        model: ${{ inputs.model }}
