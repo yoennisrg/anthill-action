@@ -1,0 +1,57 @@
+name: Anthill — on-event
+description: Poll Intent for pending AgentEvents and dispatch exec for each one
+
+inputs:
+  intent_url:
+    description: Intent API base URL
+    required: true
+  client_id:
+    description: Pre-registered clientId for this runtime (X-Runtime-Client-Id)
+    required: true
+  github_token:
+    description: GitHub token for dispatching workflows
+    required: true
+  opencode_api_key:
+    description: OpenCode API key — forwarded to exec workflow
+    required: false
+  brave_api_key:
+    description: Brave Search API key — forwarded to exec workflow
+    required: false
+  registry_token:
+    description: GitHub token for pulling from GHCR — forwarded to exec workflow
+    required: false
+  branch:
+    description: Target branch — forwarded to exec workflow
+    required: false
+    default: main
+  merge:
+    description: Merge policy (auto/manual) — forwarded to exec workflow
+    required: false
+    default: manual
+  model:
+    description: AI model override — forwarded to exec workflow
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Install anthill CLI
+      shell: bash
+      run: |
+        curl -sSL https://github.com/yoennisrg/anthill-action/releases/latest/download/anthill-linux-amd64 \
+          -o /usr/local/bin/anthill
+        chmod +x /usr/local/bin/anthill
+
+    - name: Poll and dispatch
+      shell: bash
+      env:
+        ANTHILL_INTENT_URL: ${{ inputs.intent_url }}
+        ANTHILL_CLIENT_ID: ${{ inputs.client_id }}
+        GH_TOKEN: ${{ inputs.github_token }}
+        ANTHILL_OPENCODE_API_KEY: ${{ inputs.opencode_api_key }}
+        ANTHILL_BRAVE_API_KEY: ${{ inputs.brave_api_key }}
+        ANTHILL_REGISTRY_TOKEN: ${{ inputs.registry_token }}
+        ANTHILL_BRANCH: ${{ inputs.branch }}
+        ANTHILL_MERGE: ${{ inputs.merge }}
+        ANTHILL_MODEL: ${{ inputs.model }}
+      run: anthill poll --dispatch

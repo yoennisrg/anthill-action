@@ -1,0 +1,80 @@
+name: Anthill — exec
+description: Execute an AgentEvent — launch container and report CycleEvents to Intent
+
+inputs:
+  agent_event:
+    description: AgentEvent JSON (from on-event poll)
+    required: true
+  intent_url:
+    description: Intent API base URL
+    required: true
+  client_id:
+    description: Pre-registered clientId for this runtime (X-Runtime-Client-Id)
+    required: true
+  github_token:
+    description: GitHub token for git operations and PR management
+    required: true
+  opencode_api_key:
+    description: OpenCode API key for the agent
+    required: true
+  merge_token:
+    description: GitHub token with merge permissions (falls back to github_token)
+    required: false
+  registry_token:
+    description: GitHub token for pulling from ghcr.io (falls back to github_token)
+    required: false
+  brave_api_key:
+    description: Brave Search API key (optional)
+    required: false
+  repository:
+    description: Target repository (owner/repo)
+    required: false
+    default: ${{ github.repository }}
+  branch:
+    description: Target branch
+    required: false
+    default: main
+  merge:
+    description: Merge policy — auto or manual
+    required: false
+    default: manual
+  model:
+    description: AI model override
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Login to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.registry_token || inputs.github_token }}
+
+    - name: Install anthill CLI
+      shell: bash
+      run: |
+        curl -sSL https://github.com/yoennisrg/anthill-action/releases/latest/download/anthill-linux-amd64 \
+          -o /usr/local/bin/anthill
+        chmod +x /usr/local/bin/anthill
+
+    - name: Run agent
+      shell: bash
+      env:
+        ANTHILL_AGENT_EVENT: ${{ inputs.agent_event }}
+        ANTHILL_INTENT_URL: ${{ inputs.intent_url }}
+        ANTHILL_CLIENT_ID: ${{ inputs.client_id }}
+        GH_TOKEN: ${{ inputs.github_token }}
+        ANTHILL_GITHUB_TOKEN: ${{ inputs.github_token }}
+        ANTHILL_MERGE_TOKEN: ${{ inputs.merge_token || inputs.github_token }}
+        ANTHILL_REGISTRY_TOKEN: ${{ inputs.registry_token || inputs.github_token }}
+        OPENCODE_API_KEY: ${{ inputs.opencode_api_key }}
+        ANTHILL_OPENCODE_API_KEY: ${{ inputs.opencode_api_key }}
+        BRAVE_API_KEY: ${{ inputs.brave_api_key }}
+        ANTHILL_BRAVE_API_KEY: ${{ inputs.brave_api_key }}
+        ANTHILL_REPOSITORY: ${{ inputs.repository }}
+        ANTHILL_BRANCH: ${{ inputs.branch }}
+        ANTHILL_MODEL: ${{ inputs.model }}
+        ANTHILL_MERGE: ${{ inputs.merge }}
+      run: anthill exec-event
